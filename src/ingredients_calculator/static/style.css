@@ -1,0 +1,40 @@
+:root {
+  color-scheme: light dark;
+  --border: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  margin: 0 auto;
+  max-width: 60rem;
+  padding: 1.5rem;
+}
+
+header {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+}
+
+header a {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.75rem;
+  text-align: left;
+  white-space: nowrap;
+}
