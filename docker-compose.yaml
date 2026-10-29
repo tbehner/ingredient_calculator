@@ -1,0 +1,9 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8081:8000"
+    volumes:
+      # The database comes from elsewhere and is opened read-only.
+      - ${INGREDIENTS_DB:-./bls.sqlite3}:/data/bls.sqlite3:ro
+    restart: unless-stopped

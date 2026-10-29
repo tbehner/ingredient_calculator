@@ -48,6 +48,16 @@ INGREDIENTS_DB=/path/to/your.sqlite3 serve
 The devshell defaults `INGREDIENTS_DB` to `./bls.sqlite3`, the database in this
 repository.
 
+### Container
+
+```sh
+docker compose up --build        # http://localhost:8081
+```
+
+gunicorn listens on 8000 inside the container, published as 8081. The database
+is bind-mounted read-only; `INGREDIENTS_DB` picks which file, defaulting to
+`./bls.sqlite3`.
+
 ## Commands (devshell)
 
 | Command | Purpose                              |
