@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Macros — Ingredients Calculator{% endblock %}
+
+{# German label conventions: decimal comma on the grams, a dot grouping the
+   thousands of the kJ. #}
+{% macro g(value) %}{{ "{:.1f}".format(value) | replace(".", ",") }}&thinsp;g{% endmacro %}
+{% macro kj(value) %}{{ "{:,.0f}".format(value) | replace(",", ".") }}{% endmacro %}
+
+{% block content %}
+<h1>Macros</h1>
+
+{# Stacked the way a package has them, the maker above what it makes. Either
+   label on its own is fine, so both are optional. #}
+{% if product or manufacturer %}
+  <div class="named">
+    {% if manufacturer %}<p class="manufacturer">{{ manufacturer }}</p>{% endif %}
+    {% if product %}<p class="product">{{ product }}</p>{% endif %}
+  </div>
+{% endif %}
+
+{# The row order and the wording are the ones the LMIV prescribes; the three
+   the database has no column for stay in, as `k. A.`, rather than quietly
+   leaving the label looking complete. #}
+<div class="label">
+  <table>
+    <thead>
+      <tr>
+        <th>Durchschnittliche<br />Nährwerte</th>
+        <th>pro 100&thinsp;g</th>
+        <th>pro Packung<br />({{ "%g"|format(net_total) }}&thinsp;g)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th>Energie</th>
+        <td>{{ kj(per_100g.kj) }}&thinsp;kJ<br />{{ "%.0f"|format(per_100g.kcal) }}&thinsp;kcal</td>
+        <td>{{ kj(batch.kj) }}&thinsp;kJ<br />{{ "%.0f"|format(batch.kcal) }}&thinsp;kcal</td>
+      </tr>
+      <tr><th>Fett</th><td>{{ g(per_100g.fatt) }}</td><td>{{ g(batch.fatt) }}</td></tr>
+      <tr class="sub">
+        <th>davon gesättigte Fettsäuren</th><td>k.&thinsp;A.</td><td>k.&thinsp;A.</td>
+      </tr>
+      <tr><th>Kohlenhydrate</th><td>{{ g(per_100g.carbs) }}</td><td>{{ g(batch.carbs) }}</td></tr>
+      <tr class="sub"><th>davon Zucker</th><td>k.&thinsp;A.</td><td>k.&thinsp;A.</td></tr>
+      <tr><th>Eiweiß</th><td>{{ g(per_100g.prot) }}</td><td>{{ g(batch.prot) }}</td></tr>
+      <tr><th>Salz</th><td>k.&thinsp;A.</td><td>k.&thinsp;A.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p class="hint">
+  Net weight {{ "%g"|format(net_total) }}&thinsp;g
+  {%- if recipe.container %} ({{ "%g"|format(recipe.total) }}&thinsp;g less the
+  container's {{ "%g"|format(recipe.container) }}&thinsp;g){% endif %}. Energy
+  is calculated from the macros, with the LMIV factors. <code>k.&thinsp;A.</code>
+  where the database has no column: saturated fat, sugar and salt are mandatory
+  on a real label.
+</p>
+
+<h2>Ingredients</h2>
+
+<div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Typed</th>
+        <th>Matched</th>
+        <th>Amount</th>
+        <th>Per 100&thinsp;g</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td>{{ row.food.description }}</td>
+          <td>{{ "%g"|format(row.grams) }}&thinsp;g</td>
+          <td>{{ "%.1f"|format(row.share) }}&thinsp;g</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<form method="post" action="{{ url_for('main.choose') }}">
+  {% include "carried.html" %}
+  <button type="submit" class="link">Change the matches</button>
+</form>
+{% endblock %}

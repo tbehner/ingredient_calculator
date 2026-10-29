@@ -38,3 +38,127 @@ td {
   text-align: left;
   white-space: nowrap;
 }
+
+textarea {
+  display: block;
+  font: inherit;
+  font-family: ui-monospace, monospace;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+input[type="text"] {
+  display: block;
+  font: inherit;
+  margin: 0.25rem 0 1rem;
+  max-width: 24rem;
+  padding: 0.3rem;
+  width: 100%;
+}
+
+.named {
+  margin: -0.5rem 0 1rem;
+}
+
+.named p {
+  margin: 0;
+}
+
+.named .manufacturer {
+  font-size: 0.9em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.named .product {
+  font-size: 1.4em;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* The nutrition declaration, printed the way it is on a German package: a
+   boxed table, hairline rules, every number right against the column edge. */
+.label {
+  border: 1px solid currentColor;
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.5rem 0.75rem;
+}
+
+.label table {
+  width: 100%;
+}
+
+.label th {
+  font-weight: 600;
+}
+
+.label thead th {
+  border-bottom: 1px solid currentColor;
+  vertical-align: bottom;
+}
+
+.label thead th + th,
+.label tbody td {
+  text-align: right;
+}
+
+.label tbody tr:last-child th,
+.label tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.label tr.sub th {
+  font-weight: 400;
+  padding-left: 1.5rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 1rem;
+}
+
+button.link {
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+fieldset {
+  border: 1px solid var(--border);
+  margin: 0 0 1rem;
+}
+
+legend {
+  font-weight: 600;
+}
+
+label.choice {
+  display: block;
+  padding: 0.15rem 0;
+}
+
+.score,
+.hint {
+  color: color-mix(in srgb, currentColor 60%, transparent);
+  font-size: 0.9em;
+}
+
+.error {
+  border-left: 3px solid currentColor;
+  color: #b3261e;
+  padding-left: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error {
+    color: #f2b8b5;
+  }
+}
+
+.actions {
+  margin-top: 1rem;
+}

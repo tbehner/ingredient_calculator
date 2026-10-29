@@ -1,4 +1,28 @@
 {% extends "base.html" %}
 
 {% block content %}
+<h1>Ingredients</h1>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<form method="post" action="{{ url_for('main.choose') }}">
+  <label for="product">Product</label>
+  <input type="text" id="product" name="product" value="{{ product or '' }}"
+         placeholder="Overnight oats" />
+
+  <label for="manufacturer">Manufacturer</label>
+  <input type="text" id="manufacturer" name="manufacturer" value="{{ manufacturer or '' }}"
+         placeholder="Homemade" />
+
+  <label for="recipe">One <code>amount; name</code> line per ingredient, amounts in grams.</label>
+  <textarea id="recipe" name="recipe" rows="10" spellcheck="false" autofocus
+            placeholder="50; Hafer Flocken&#10;125; Milch&#10;175; total">{{ recipe_text or "" }}</textarea>
+  <p class="hint">
+    <code>total</code> and <code>container</code> are reserved labels: the gross
+    weight of the filled container and the tare weight of the empty one. Without
+    a <code>total</code> line the amounts are taken to add up to the whole
+    product. <code>#</code> starts a comment.
+  </p>
+  <button type="submit">Find matches</button>
+</form>
 {% endblock %}

@@ -4,15 +4,18 @@ Notes from evaluating fuzzy matching over `food.description` on 2026-10-06.
 Written down because the gotchas below cost measurable time to find.
 
 **Implemented in `search.py`:** SQLite generates candidates, rapidfuzz reranks
-them in process. There is deliberately no HTTP endpoint yet. Measured end to end
-against the real `bls.sqlite3`:
+them in process — with `search.score()` rather than `fuzz.WRatio`, for the
+reason in *WRatio's length bias* below. There is deliberately no HTTP endpoint
+yet. Measured end to end against the real `bls.sqlite3`:
 
 ```
-'haferflocken'   cand= 40 ( 7.6ms)  total  9.8ms   96.0  Hafer Flocken
-'Hafr Flocken'   cand= 36 (13.9ms)  total 18.1ms   96.0  Hafer Flocken
-'gesuesst'       cand=262 ( 7.4ms)  total 22.8ms   90.0  Amaranth gepufft, ungesüßt
-'milch 3,5'      cand=280 (13.6ms)  total 33.8ms   90.0  Apfelreis mit Milch 3,5 % Fett
-'zwibl'          cand=  0 ( 7.0ms)  total  6.9ms   >>> NO HIT
+'haferflocken'   cand= 40 ( 6.7ms)  total  7.8ms  100.0  Hafer Flocken
+'Hafr Flocken'   cand= 36 (12.1ms)  total 14.0ms   94.4  Hafer Flocken
+'gesuesst'       cand=262 ( 6.6ms)  total 19.0ms   85.0  Popcorn gesüßt
+'milch 3,5'      cand=280 (11.8ms)  total 33.0ms   95.0  Dickmilch/Sauermilch, mind. 3,5 % Fett
+'Milch'          cand=261 ( 6.4ms)  total 17.0ms  100.0  Milch fettarm, frisch, 1,5 % Fett, pasteurisiert
+'weizenmehl'     cand=137 ( 6.2ms)  total  9.5ms   95.2  Weizen Mehl, Type 812
+'zwibl'          cand=  0 ( 6.1ms)  total  6.0ms   >>> NO HIT
 ```
 
 The candidate query never returns more than a few hundred of the 7,140 rows, so
@@ -34,19 +37,21 @@ Scoring the whole corpus on every query is too slow for a request:
 
 | Approach                                  | Latency      | Notes                                                           |
 | ----------------------------------------- | ------------ | --------------------------------------------------------------- |
-| `fuzz.WRatio` over all 7,140              | 370–780 ms   | best ranking, unusably slow                                     |
+| `fuzz.WRatio` over all 7,140              | 370–780 ms   | unusably slow, and length-biased — see below                     |
 | `fuzz.token_set_ratio` over all 7,140     | ~56 ms       | over-matches: scores 100 for any long description containing the token |
-| token-prefix prefilter, then WRatio rerank | **5–22 ms**  | WRatio's ranking, 30–100× faster                                |
+| token-prefix prefilter, then rerank        | **6–33 ms**  | 30–100× faster, and the rerank is then cheap enough to be token-level |
 
-The cost is WRatio's internal `partial_ratio` pass over long strings — it is
+The cost was WRatio's internal `partial_ratio` pass over long strings — it is
 *not* the `processor=` keyword. Pre-normalizing the corpus does not speed it up
 (666 ms vs 691 ms), so the fix is to shrink the candidate set, not to
-pre-process it.
+pre-process it. Scoring token by token is cheaper per row (the `ratio` calls are
+over tokens, not whole descriptions), but the prefilter still earns its place:
+it is what keeps the rerank off 7,140 rows.
 
 `search.py` keeps the shape but moves candidate generation into SQL, so the
 `keys` list never exists: `search.candidates()` emits one `LIKE` per query-token
 fragment, OR'ed, over a folded `description`, and `search.search()` reranks only
-those rows with `WRatio`.
+those rows.
 
 ### Memory, if candidate generation ever moves back into Python
 
@@ -64,9 +69,78 @@ explicit `str.maketrans` table. Without it, the query `gesuesst` scored 68
 against the unrelated `gesäuert`; with it, `ungesüßt` scores 90.
 
 German compounds are the related wrinkle: the query `Haferflocken` has to match
-the stored `Hafer Flocken`. WRatio handles it (96), which is part of why it is
-worth reranking with. If this degrades, trigram similarity (what Postgres
-`pg_trgm` does) is the right escalation.
+the stored `Hafer Flocken`. `search.units()` handles it by also matching the
+query against each pair of adjacent tokens joined up, so `hafer` + `flocken` is
+compared as `haferflocken` and matches exactly. If this degrades, trigram
+similarity (what Postgres `pg_trgm` does) is the right escalation.
+
+## WRatio's length bias
+
+**`fuzz.WRatio` cannot rank these descriptions and is no longer used.** Found on
+2026-10-08 from a query of `Milch`, whose top hits all contained the word but
+none of which were milk:
+
+```
+90.0  Ananasringe im Milchbackteig gebraten
+90.0  Buttermilchpulver
+90.0  Apfelreis mit Milch 3,5 % Fett
+...
+60.0  Milch fettarm, frisch, 1,5 % Fett, pasteurisiert     <- the actual milk
+```
+
+The cause is a bucket boundary inside WRatio. It computes
+`len_ratio = max(len) / min(len)` and scales its `partial_ratio` by 0.9 — but by
+**0.6 once `len_ratio ≥ 8`**. Against the 5-character `milch` that threshold
+falls at 40 characters, and every real milk row carries the full BLS qualifier
+tail (`fettarm, frisch, 1,5 % Fett, pasteurisiert`) that puts it past 40. A
+substring match in a *short* description therefore beats a substring match in a
+long one, whatever the long one is about. It is the same length bias that
+disqualifies `levenshtein` below, just hidden in a step function, and no cutoff
+or `scorer_kwargs` tuning moves it.
+
+`search.score()` replaces it and compares no lengths at all:
+
+- each query token is scored against each description token and against each
+  adjacent pair joined (`units()`), and the best per query token are averaged —
+  so a description is rated on how much of the query it covers;
+- an exact token scores 100, a token the query merely sits inside
+  `COMPOUND_SCORE` (90). Containment is checked anywhere in the token, not just
+  at the start: German puts the head noun of a compound last, so the whole-milk
+  row is `H-Vollmilch 3,5 % Fett` with `milch` as a *suffix*. Without that,
+  `Milch` misses whole milk entirely;
+- containment is **not** allowed to match a joined pair, which already spans two
+  tokens. `gesuesst` sits inside the pair `popcornungesuesst`, and counting it
+  would make `Popcorn ungesüßt` a head match for `gesuesst`;
+- a match past the first token is scaled by `NON_HEAD_SCALE` (0.85), because BLS
+  leads with the head noun. This is what separates a milk from a dish made with
+  milk, and it is deliberately a bigger penalty than the 10 points between an
+  exact and a compound token: `Vollmilch frisch, 3,5 % Fett` (90) has to beat
+  `Apfelreis mit Milch 3,5 % Fett` (100 × 0.85 = 85), even though only the
+  latter spells the query out as its own word.
+
+Ties are broken on description length and then id, so the plain row comes before
+the qualified one and the order never depends on what SQLite returned first.
+WRatio left ties unbroken — all six `Weizen Mehl, Type …` rows and
+`Buchweizen Mehl` scored 81 for `weizenmehl`, and which one came first was
+whatever the scan order gave.
+
+Pinned by `test_search.py::test_a_milk_outranks_a_dish_made_with_milk` and the
+tests around it.
+
+### Known limitation: compounds the substring rule reads wrongly
+
+Containment cannot tell a modifier from a morpheme. `Buchweizenmehl` contains
+`weizenmehl` but is buckwheat flour, not wheat flour — only a German
+decompounder knows that `buchweizen` is one word. Joined-pair matching is what
+saves the `weizenmehl` query in practice (`Weizen Mehl, Type 405` matches the
+pair at 95.2, while `Buchweizen Mehl` only reaches 83 by `ratio`), but the rule
+is a heuristic and a corpus that wrote `Buchweizenmehl` as one token would rank
+it first. A decompounder or trigram similarity is the fix if this starts to
+matter.
+
+Inflection is the other gap, and it is a *recall* one: BLS stores the singular
+`Apfel …`, so the query `aepfel` never generates those candidates — its `aepf`
+fragment does not occur in `apfel`. Same root cause as `zwibl` below.
 
 ## Known limitation: typo before the prefix point
 
@@ -156,7 +230,8 @@ transliteration (see `norm` above).
 `haferflocken` finds only descriptions literally containing `Haferflocken`, never
 the stored `Hafer Flocken`; and `hafer` does not find `Haferflocken`. There is no
 German decompounder in FTS5. This is the limitation that does not go away, and
-the main reason the rapidfuzz rerank stays (WRatio scores that pair 96).
+the main reason the rapidfuzz rerank stays (`search.score()` matches that pair
+exactly, by joining adjacent tokens).
 
 ### Prefer a normalized in-memory index over writing to `bls.sqlite3`
 
@@ -231,13 +306,38 @@ rows the index returns, where being unindexable does not matter.
 ## Scale
 
 At 7,140 rows nothing more is needed for *performance*: the implemented path runs
-in 7–34 ms, of which 7–14 ms is the candidate `LIKE` scan. That scan is the part
-that will degrade first, since the folded expression cannot use
+in 8–20 ms for a one-token query and up to 78 ms for a four-token one, most of it
+the candidate `LIKE` scan — one scan per fragment, at 6–14 ms each. That scan is
+the part that will degrade first, since the folded expression cannot use
 `food_description_idx`. Options when it does, cheapest first: raise
 `FRAGMENT_LENGTH` to cut the candidate set, add an expression index over the
 folded column (needs a writable database — `bls.sqlite3` is opened `mode=ro`), or
 move to Postgres `pg_trgm` as above. BK-trees and SymSpell stay unnecessary until
 the table grows by an order of magnitude.
+
+### `CANDIDATE_LIMIT` has to be shared per fragment
+
+The cap is not just a memory guard, and truncating it carelessly loses hits.
+Found alongside the WRatio bug on 2026-10-08: `candidates()` used to be one
+OR'ed scan under a single `LIMIT 500`, which filled up with whatever the scan
+met first — rowid order. The query `gekochte kartoffeln mit butter` matches
+2,656 rows, spent the whole budget on `geko` and `mit`, and never reached
+`kart`:
+
+```
+cap=500, one OR'ed scan     72.7  Artischocken gekocht, mit Butter      <- best surviving row
+all 2,656 candidates        82.3  Kartoffeln gekocht, mit Kräuterquark und Butter
+```
+
+So `candidates()` now gives each fragment `limit // len(frags)` rows of its own,
+as a `UNION` of one subquery per fragment, and orders each slice by
+`instr(description, fragment)` so what survives truncation is the rows the
+fragment *leads* — the same head signal `score()` ranks on.
+
+Raising the cap instead is not an option: scoring all 2,656 candidates takes
+**338 ms** against 35 ms for the four capped scans. The cap is what makes a
+token-level scorer affordable, so it has to stay, and it has to be fair.
+Pinned by `test_every_fragment_gets_a_share_of_the_candidate_limit`.
 
 ## Rejected
 

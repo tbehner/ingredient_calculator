@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Flask, current_app, g
 
-DEFAULT_DB = "ingredients.sqlite3"
+DEFAULT_DB = "bls.sqlite3"
 
 
 def database_path() -> Path:
@@ -17,8 +17,16 @@ def database_path() -> Path:
 def get_db() -> sqlite3.Connection:
     """Read-only connection for the current request, opened lazily and reused."""
     if "db" not in g:
+        path = database_path()
+        # `mode=ro` never creates the file, so a missing one is a misconfigured
+        # path rather than a first run. SQLite would only say "unable to open
+        # database file", without naming it.
+        if not path.exists():
+            raise FileNotFoundError(
+                f"No database at {path}. Point INGREDIENTS_DB at your SQLite file."
+            )
         g.db = sqlite3.connect(
-            f"file:{database_path()}?mode=ro",
+            f"file:{path}?mode=ro",
             uri=True,
             detect_types=sqlite3.PARSE_DECLTYPES,
         )
@@ -40,15 +48,6 @@ def query(sql: str, params: tuple = (), *, one: bool = False):
     if one:
         return rows[0] if rows else None
     return rows
-
-
-def tables() -> list[str]:
-    """Names of the tables and views in the attached database."""
-    rows = query(
-        "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') "
-        "AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    )
-    return [row["name"] for row in rows]
 
 
 def init_app(app: Flask) -> None:

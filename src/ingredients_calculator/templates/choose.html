@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Pick the matches — Ingredients Calculator{% endblock %}
+
+{% block content %}
+<h1>Pick the matches</h1>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+{% if unmatched %}
+  <p class="error">
+    Nothing in the database for
+    {% for ingredient in unmatched %}<code>{{ ingredient.name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+    Edit the input and try a different wording.
+  </p>
+{% endif %}
+
+<form method="post" action="{{ url_for('main.result') }}">
+  {% include "carried.html" %}
+
+  {% for ingredient, hits in matches %}
+    {# One radio group per ingredient: a shared name would make the whole page
+       a single group, and only one match pickable overall. `views.py` reads
+       the positions back out of `choice-<n>`. #}
+    {% set position = loop.index0 %}
+    <fieldset>
+      <legend>{{ "%g"|format(ingredient.amount) }}&thinsp;g — {{ ingredient.name }}</legend>
+      {% if hits %}
+        {% for hit in hits %}
+          <label class="choice">
+            <input type="radio" name="choice-{{ position }}" value="{{ hit.id }}"
+                   {{ "checked" if loop.first }} />
+            {{ hit.description }}
+            <span class="score">{{ hit.score | round | int }}</span>
+          </label>
+        {% endfor %}
+      {% else %}
+        <p class="hint">No match.</p>
+      {% endif %}
+    </fieldset>
+  {% endfor %}
+
+  <p class="actions">
+    <button type="submit" {{ "disabled" if unmatched }}>Calculate macros</button>
+  </p>
+</form>
+
+<form method="post" action="{{ url_for('main.index') }}">
+  {% include "carried.html" %}
+  <button type="submit" class="link">Edit the ingredients</button>
+</form>
+{% endblock %}

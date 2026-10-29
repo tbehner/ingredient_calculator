@@ -55,7 +55,7 @@
             }
             {
               name = "INGREDIENTS_DB";
-              eval = "$PRJ_ROOT/ingredients.sqlite3";
+              eval = "$PRJ_ROOT/bls.sqlite3";
             }
           ];
 

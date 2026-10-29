@@ -1,0 +1,5 @@
+{# What every step posts forward: the typed recipe and the product labels.
+   Included inside each form, since nothing is stored between steps. #}
+<input type="hidden" name="recipe" value="{{ recipe_text }}" />
+<input type="hidden" name="product" value="{{ product or '' }}" />
+<input type="hidden" name="manufacturer" value="{{ manufacturer or '' }}" />
