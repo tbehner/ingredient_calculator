@@ -5,5 +5,14 @@ services:
       - "8081:8000"
     volumes:
       # The database comes from elsewhere and is opened read-only.
-      - ${INGREDIENTS_DB:-./bls.sqlite3}:/data/bls.sqlite3:ro
+      - type: bind
+        source: ${INGREDIENTS_DB:-./bls.sqlite3}
+        target: /data/bls.sqlite3
+        read_only: true
+        bind:
+          # Without this, a source path that does not exist — the database is
+          # not in the repository, so that is the normal state on a fresh host —
+          # is silently created as an empty *directory*, and SQLite fails with
+          # "disk I/O error" instead of anything that names the real problem.
+          create_host_path: false
     restart: unless-stopped

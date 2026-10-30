@@ -56,7 +56,23 @@ docker compose up --build        # http://localhost:8081
 
 gunicorn listens on 8000 inside the container, published as 8081. The database
 is bind-mounted read-only; `INGREDIENTS_DB` picks which file, defaulting to
-`./bls.sqlite3`.
+`./bls.sqlite3` relative to this directory.
+
+On any host without the devshell — a server, in particular — `INGREDIENTS_DB`
+has to be set explicitly, as an **absolute** path:
+
+```sh
+echo INGREDIENTS_DB=/srv/ingredients/bls.sqlite3 > .env
+docker compose up -d --build
+```
+
+The database is not in the repository (`*.sqlite3` is ignored), so the default
+`./bls.sqlite3` does not exist on a fresh clone — copy the file over first.
+Compose is configured with `create_host_path: false`, so a wrong path fails the
+container with `bind source path does not exist: …` rather than mounting an
+empty directory over the database. A bare relative path such as
+`INGREDIENTS_DB=data/bls.sqlite3` is read as a *named volume*, not a host path;
+use `/…` or `./…`.
 
 ## Commands (devshell)
 
