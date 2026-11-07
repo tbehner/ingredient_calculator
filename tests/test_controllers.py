@@ -7,13 +7,13 @@ from ingredients_calculator import controllers
 from ingredients_calculator.app import create_app
 from ingredients_calculator.models import Ingredient, Macros
 
-# id, description, fat, protein, carbs per 100g. `Salz` has NULL macros, which
-# the BLS data does for anything unmeasured.
+# id, description, fat, satfat, protein, carbs, fiber, sugar per 100g. `Salz`
+# has NULL macros, which the BLS data does for anything unmeasured.
 FOODS = [
-    (1, "Hafer Flocken", 6.65, 13.22, 53.3),
-    (2, "Milch 3,5 % Fett", 3.5, 3.4, 4.8),
-    (3, "Hirse Flocken", 3.9, 10.6, 68.8),
-    (4, "Salz", None, None, None),
+    (1, "Hafer Flocken", 6.65, 1.2, 13.22, 53.3, 10.6, 0.63),
+    (2, "Milch 3,5 % Fett", 3.5, 2.2, 3.4, 4.8, 0.0, 4.8),
+    (3, "Hirse Flocken", 3.9, 0.7, 10.6, 68.8, 3.4, 1.4),
+    (4, "Salz", None, None, None, None, None, None),
 ]
 
 
@@ -23,11 +23,11 @@ def database(tmp_path):
     con = sqlite3.connect(path)
     con.execute(
         "CREATE TABLE food (id INTEGER PRIMARY KEY, bls_code TEXT, description TEXT NOT NULL,"
-        " fat REAL, protein REAL, carbs REAL)"
+        " fat REAL, satfat REAL, protein REAL, carbs REAL, fiber REAL, sugar REAL)"
     )
     con.executemany(
-        "INSERT INTO food (id, bls_code, description, fat, protein, carbs)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO food (id, bls_code, description, fat, satfat, protein, carbs, fiber, sugar)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [(food_id, f"X{food_id:05d}", *rest) for food_id, *rest in FOODS],
     )
     con.commit()
@@ -70,9 +70,9 @@ def test_get_macros():
             Ingredient(id=1, name="Hafer", inp_text="Hafer", amount=50),
             ]
     macros = {
-            1: Macros(fatt=10, prot=14, carbs=54),
+            1: Macros(fatt=10, satfat=6, prot=14, carbs=54, fiber=8, sugar=2),
             }
-    expected_total_macros = Macros(fatt=5, prot=7, carbs=27)
+    expected_total_macros = Macros(fatt=5, satfat=3, prot=7, carbs=27, fiber=4, sugar=1)
     assert controllers.total_macros(normalized_ingredients, macros) == expected_total_macros
 
 
@@ -166,13 +166,16 @@ def test_normalizing_needs_a_positive_net_weight():
 def test_total_macros_scales_by_the_hundred_grams_of_each_ingredient():
     ingredients = [ingredient("Hafer", 100.0, id=1), ingredient("Milch", 300.0, id=2)]
     macros = {
-        1: Macros(fatt=7.0, prot=13.0, carbs=59.0),
-        2: Macros(fatt=3.5, prot=3.4, carbs=4.8),
+        1: Macros(fatt=7.0, satfat=1.3, prot=13.0, carbs=59.0, fiber=9.0, sugar=1.0),
+        2: Macros(fatt=3.5, satfat=2.2, prot=3.4, carbs=4.8, fiber=0.0, sugar=4.8),
     }
     total = controllers.total_macros(ingredients, macros)
     assert total.fatt == pytest.approx(7.0 + 3.5 * 3)
+    assert total.satfat == pytest.approx(1.3 + 2.2 * 3)
     assert total.prot == pytest.approx(13.0 + 3.4 * 3)
     assert total.carbs == pytest.approx(59.0 + 4.8 * 3)
+    assert total.fiber == pytest.approx(9.0 + 0.0 * 3)
+    assert total.sugar == pytest.approx(1.0 + 4.8 * 3)
 
 
 # -- database lookup --------------------------------------------------------
@@ -181,11 +184,13 @@ def test_total_macros_scales_by_the_hundred_grams_of_each_ingredient():
 def test_foods_by_id_returns_descriptions_and_macros(app_context):
     foods = controllers.foods_by_id([1, 2])
     assert foods[1].description == "Hafer Flocken"
-    assert foods[2].macros == Macros(fatt=3.5, prot=3.4, carbs=4.8)
+    assert foods[2].macros == Macros(
+        fatt=3.5, satfat=2.2, prot=3.4, carbs=4.8, fiber=0.0, sugar=4.8
+    )
 
 
 def test_foods_by_id_counts_null_macros_as_zero(app_context):
-    assert controllers.foods_by_id([4])[4].macros == Macros(0.0, 0.0, 0.0)
+    assert controllers.foods_by_id([4])[4].macros == Macros(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 
 def test_foods_by_id_skips_unknown_ids(app_context):
@@ -303,9 +308,31 @@ def test_result_shows_the_macros(client):
 
 def test_energy_uses_the_lmiv_factors():
     """37 kJ/g of fat, 17 for carbs and protein; 9 kcal and 4."""
-    assert Macros(fatt=1.0, prot=0.0, carbs=0.0).kj == 37.0
-    assert Macros(fatt=0.0, prot=1.0, carbs=1.0).kj == 34.0
-    assert Macros(fatt=1.0, prot=1.0, carbs=1.0).kcal == 17.0
+    assert Macros(fatt=1.0, satfat=0.0, prot=0.0, carbs=0.0, fiber=0.0, sugar=0.0).kj == 37.0
+    assert Macros(fatt=0.0, satfat=0.0, prot=1.0, carbs=1.0, fiber=0.0, sugar=0.0).kj == 34.0
+    assert Macros(fatt=1.0, satfat=0.0, prot=1.0, carbs=1.0, fiber=0.0, sugar=0.0).kcal == 17.0
+
+
+def test_macros_rejects_sugar_above_carbs():
+    """Sugar is a sub-part of carbs ("davon Zucker"), so it can't exceed them."""
+    with pytest.raises(ValueError, match="sugar"):
+        Macros(fatt=0.0, satfat=0.0, prot=0.0, carbs=5.0, fiber=0.0, sugar=5.1)
+
+
+def test_macros_allows_sugar_equal_to_carbs():
+    macros = Macros(fatt=0.0, satfat=0.0, prot=0.0, carbs=5.0, fiber=0.0, sugar=5.0)
+    assert macros.sugar == 5.0
+
+
+def test_macros_rejects_satfat_above_fat():
+    """Saturated fat is a sub-part of fat ("davon gesättigte Fettsäuren")."""
+    with pytest.raises(ValueError, match="satfat"):
+        Macros(fatt=5.0, satfat=5.1, prot=0.0, carbs=0.0, fiber=0.0, sugar=0.0)
+
+
+def test_macros_allows_satfat_equal_to_fat():
+    macros = Macros(fatt=5.0, satfat=5.0, prot=0.0, carbs=0.0, fiber=0.0, sugar=0.0)
+    assert macros.satfat == 5.0
 
 
 def test_result_declares_the_energy(client):

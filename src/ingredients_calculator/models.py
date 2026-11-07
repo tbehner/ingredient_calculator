@@ -18,8 +18,25 @@ ENERGY_KCAL = {"fatt": 9.0, "carbs": 4.0, "prot": 4.0}
 @dataclass
 class Macros:
     fatt: float
+    satfat: float
     prot: float
     carbs: float
+    fiber: float
+    sugar: float
+
+    def __post_init__(self) -> None:
+        # Sugars and saturated fat are sub-parts of carbs and fat ("davon
+        # Zucker"/"davon gesättigte Fettsäuren" on the label), so neither can
+        # add up to more than the nutrient it is part of. A tiny tolerance
+        # absorbs float error from summing ingredients.
+        if self.sugar > self.carbs + 1e-9:
+            raise ValueError(
+                f"sugar ({self.sugar}g) exceeds carbs ({self.carbs}g), but sugar is part of carbs"
+            )
+        if self.satfat > self.fatt + 1e-9:
+            raise ValueError(
+                f"satfat ({self.satfat}g) exceeds fat ({self.fatt}g), but satfat is part of fat"
+            )
 
     @property
     def kj(self) -> float:

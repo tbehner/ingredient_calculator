@@ -23,8 +23,8 @@ Three steps:
 2. Pick the database entry for each ingredient from its top matches.
 3. Read the nutrition declaration, laid out like the one on a German package:
    the LMIV rows and wording, per 100g and for the whole batch, energy
-   computed from the macros. Saturated fat, sugar and salt are mandatory on a
-   real label but have no column in the database, so they stay `k. A.`.
+   computed from the macros. Salt is mandatory on a real label but has no
+   column in the database, so it stays `k. A.`.
 
 Each step posts the typed text and the two names forward in hidden fields
 (`templates/carried.html`); the database is read-only, so nothing is stored in

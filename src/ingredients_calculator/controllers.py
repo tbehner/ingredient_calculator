@@ -99,7 +99,7 @@ def foods_by_id(ids: Iterable[int]) -> dict[int, models.Food]:
         return {}
 
     rows = db.query(
-        "SELECT id, description, fat, protein, carbs FROM food "
+        "SELECT id, description, fat, satfat, protein, carbs, fiber, sugar FROM food "
         f"WHERE id IN ({','.join('?' * len(unique))})",
         tuple(unique),
     )
@@ -109,8 +109,11 @@ def foods_by_id(ids: Iterable[int]) -> dict[int, models.Food]:
             description=row["description"],
             macros=models.Macros(
                 fatt=row["fat"] or 0.0,
+                satfat=row["satfat"] or 0.0,
                 prot=row["protein"] or 0.0,
                 carbs=row["carbs"] or 0.0,
+                fiber=row["fiber"] or 0.0,
+                sugar=row["sugar"] or 0.0,
             ),
         )
         for row in rows
@@ -143,14 +146,21 @@ def total_macros(
     same terms as the amounts passed in: normalized ingredients give macros per
     100g of product, raw amounts give macros for the whole batch.
     """
-    total = models.Macros(fatt=0.0, prot=0.0, carbs=0.0)
+    fatt = satfat = prot = carbs = fiber = sugar = 0.0
     for ingredient in ingredients:
         per_100g = macros[ingredient.id]
         factor = ingredient.amount / 100
-        total.fatt += per_100g.fatt * factor
-        total.prot += per_100g.prot * factor
-        total.carbs += per_100g.carbs * factor
-    return total
+        fatt += per_100g.fatt * factor
+        satfat += per_100g.satfat * factor
+        prot += per_100g.prot * factor
+        carbs += per_100g.carbs * factor
+        fiber += per_100g.fiber * factor
+        sugar += per_100g.sugar * factor
+    # Built once at the end, rather than mutated in the loop, so `Macros`
+    # validates the summed totals too, not just each ingredient's own macros.
+    return models.Macros(
+        fatt=fatt, satfat=satfat, prot=prot, carbs=carbs, fiber=fiber, sugar=sugar
+    )
 
 
 def choice_context(text: str) -> dict:

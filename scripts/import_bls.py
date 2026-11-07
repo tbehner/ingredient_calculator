@@ -16,24 +16,31 @@ from pathlib import Path
 
 import openpyxl
 
+#: Nutrient columns to pull in, db column name -> xlsx header label. Order
+#: matches the `INSERT` below.
+NUTRIENTS = {
+    "fat": "FAT Fett [g/100g]",
+    "satfat": "FASAT Fettsäuren, gesättigt, gesamt [g/100g]",
+    "protein": "PROT625 Protein (Nx6,25) [g/100g]",
+    "carbs": "CHO Kohlenhydrate, verfügbar [g/100g]",
+    "fiber": "FIBT Ballaststoffe, gesamt [g/100g]",
+    "sugar": "SUGAR Zucker (Mono- und Disaccharide), gesamt [g/100g]",
+}
+
 COLUMNS = {
     "bls_code": "BLS Code",
     "description": "Lebensmittelbezeichnung",
-    "fat": "FAT Fett [g/100g]",
-    "protein": "PROT625 Protein (Nx6,25) [g/100g]",
-    "carbs": "CHO Kohlenhydrate, verfügbar [g/100g]",
+    **NUTRIENTS,
 }
 
 SHEET_NAME = "BLS_4_0_Daten_2025_DE"
 
-SCHEMA = """
+SCHEMA = f"""
 CREATE TABLE food (
     id          INTEGER PRIMARY KEY,
     bls_code    TEXT NOT NULL UNIQUE,
     description TEXT NOT NULL,
-    fat         REAL,
-    protein     REAL,
-    carbs       REAL
+    {",\n    ".join(f"{name:<11} REAL" for name in NUTRIENTS)}
 );
 CREATE INDEX food_description_idx ON food(description);
 """
@@ -54,7 +61,7 @@ def to_float(value: object) -> float | None:
     return None if value.strip() == "-" else 0.0
 
 
-def read_rows(xlsx_path: Path) -> list[tuple[str, str, float | None, float | None, float | None]]:
+def read_rows(xlsx_path: Path) -> list[tuple]:
     workbook = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
     sheet = workbook[SHEET_NAME]
     row_iter = sheet.iter_rows(values_only=True)
@@ -64,24 +71,32 @@ def read_rows(xlsx_path: Path) -> list[tuple[str, str, float | None, float | Non
 
     rows = []
     for row in row_iter:
+        values = {name: to_float(row[index[name]]) for name in NUTRIENTS}
+        # Total fat and the fatty-acid breakdown come from different
+        # measurements, so a handful of entries have saturated fat a shade
+        # above total fat (e.g. rounding fat down to 0 while keeping a trace
+        # of saturated fat). Capping it at the total keeps that total a valid
+        # upper bound for the app's "sugar/satfat are part of carbs/fat" check.
+        if values["satfat"] is not None and values["fat"] is not None:
+            values["satfat"] = min(values["satfat"], values["fat"])
         rows.append((
             row[index["bls_code"]],
             row[index["description"]].strip(),
-            to_float(row[index["fat"]]),
-            to_float(row[index["protein"]]),
-            to_float(row[index["carbs"]]),
+            *(values[name] for name in NUTRIENTS),
         ))
     return rows
 
 
 def write_db(rows: list[tuple], db_path: Path) -> None:
+    columns = ", ".join(COLUMNS)
+    placeholders = ", ".join("?" * len(COLUMNS))
+
     connection = sqlite3.connect(db_path)
     try:
         connection.execute("DROP TABLE IF EXISTS food")
         connection.executescript(SCHEMA)
         connection.executemany(
-            "INSERT INTO food (bls_code, description, fat, protein, carbs) "
-            "VALUES (?, ?, ?, ?, ?)",
+            f"INSERT INTO food ({columns}) VALUES ({placeholders})",
             rows,
         )
         connection.commit()

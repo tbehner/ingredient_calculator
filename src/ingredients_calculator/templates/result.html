@@ -19,8 +19,8 @@
   </div>
 {% endif %}
 
-{# The row order and the wording are the ones the LMIV prescribes; the three
-   the database has no column for stay in, as `k. A.`, rather than quietly
+{# The row order and the wording are the ones the LMIV prescribes; the one
+   the database has no column for stays in, as `k. A.`, rather than quietly
    leaving the label looking complete. #}
 <div class="label">
   <table>
@@ -39,10 +39,14 @@
       </tr>
       <tr><th>Fett</th><td>{{ g(per_100g.fatt) }}</td><td>{{ g(batch.fatt) }}</td></tr>
       <tr class="sub">
-        <th>davon gesättigte Fettsäuren</th><td>k.&thinsp;A.</td><td>k.&thinsp;A.</td>
+        <th>davon gesättigte Fettsäuren</th>
+        <td>{{ g(per_100g.satfat) }}</td><td>{{ g(batch.satfat) }}</td>
       </tr>
       <tr><th>Kohlenhydrate</th><td>{{ g(per_100g.carbs) }}</td><td>{{ g(batch.carbs) }}</td></tr>
-      <tr class="sub"><th>davon Zucker</th><td>k.&thinsp;A.</td><td>k.&thinsp;A.</td></tr>
+      <tr class="sub">
+        <th>davon Zucker</th><td>{{ g(per_100g.sugar) }}</td><td>{{ g(batch.sugar) }}</td>
+      </tr>
+      <tr><th>Ballaststoffe</th><td>{{ g(per_100g.fiber) }}</td><td>{{ g(batch.fiber) }}</td></tr>
       <tr><th>Eiweiß</th><td>{{ g(per_100g.prot) }}</td><td>{{ g(batch.prot) }}</td></tr>
       <tr><th>Salz</th><td>k.&thinsp;A.</td><td>k.&thinsp;A.</td></tr>
     </tbody>
@@ -54,8 +58,7 @@
   {%- if recipe.container %} ({{ "%g"|format(recipe.total) }}&thinsp;g less the
   container's {{ "%g"|format(recipe.container) }}&thinsp;g){% endif %}. Energy
   is calculated from the macros, with the LMIV factors. <code>k.&thinsp;A.</code>
-  where the database has no column: saturated fat, sugar and salt are mandatory
-  on a real label.
+  where the database has no column: salt is mandatory on a real label.
 </p>
 
 <h2>Ingredients</h2>
